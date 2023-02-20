@@ -171,6 +171,7 @@ namespace TestCaseTool2.DataLayer
             interval_state_machine = E_IntervalStateMachine.FIRST_INTERVAL_POINT;
             List<BreakingPoint> isObservedList = new List<BreakingPoint>(); // slúži na to aby body, ktoré niesú zahrnuté v skupine/intervale už neboli zobrazované ako samostatné stĺpce
             //Avšak treba zvážiť Či body patriace do intervalu EXCLUSIVE_INTERVAL
+            if (pointGroupList == null) pointGroupList = new List<PointGroup>();
             foreach (PointGroup pg in pointGroupList)
             {
                 string Text = "";
