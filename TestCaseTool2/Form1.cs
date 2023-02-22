@@ -38,31 +38,7 @@ namespace TestCaseTool2
                 PopulateTreeView();
             }
         }
-        public static string Serialize(List<Interface> interfaces)
-        {
-            JsonSerializerSettings settings = new JsonSerializerSettings
-            {
-                ReferenceLoopHandling = ReferenceLoopHandling.Ignore
-            };
-            return JsonConvert.SerializeObject(interfaces, settings);
-        }
 
-        public static List<Interface> Deserialize(string json)
-        {
-            var interfaces = JsonConvert.DeserializeObject<List<Interface>>(json);
-
-            // Nastavenie referencii rodičovského objektu
-            foreach (var intf in interfaces)
-            {
-                foreach (var bp in intf.BreakingPoints)
-                {
-                    bp.ParentInterface = intf;
-
-                }
-            }
-
-            return interfaces;
-        }
 
         public static bool SaveToFile(List<Interface> interfaces)
         {
@@ -73,7 +49,7 @@ namespace TestCaseTool2
             {
                 try
                 {
-                    string json = Serialize(interfaces);
+                    string json = Interface.Serialize(interfaces);
                     File.WriteAllText(saveFileDialog.FileName, json);
                     return true;
                 }
@@ -93,7 +69,7 @@ namespace TestCaseTool2
                 if (openFileDialog.ShowDialog() == DialogResult.OK)
                 {
                     string json = File.ReadAllText(openFileDialog.FileName);
-                    interfaces = Deserialize(json);
+                    interfaces = Interface.Deserialize(json);
                 }
             }
             return interfaces;
@@ -159,11 +135,12 @@ namespace TestCaseTool2
 
         public void DefineInterval(List<BreakingPoint> breakingPoints)
         {
-            var ie = new IntervalEditor(breakingPoints[0], breakingPoints[1]);
+            var ie = new IntervalEditor(breakingPoints[0], breakingPoints[1], point_groups);
+   
             DialogResult = ie.ShowDialog();
             if(DialogResult == DialogResult.OK)
             {
-                var new_pg = new PointGroup();
+                var new_pg = ie.newPG;
 
                 int uniqueId = 1;
 
@@ -173,16 +150,9 @@ namespace TestCaseTool2
                     uniqueId++;
 
                 new_pg.Id = uniqueId;
-                new_pg.BreakingPoints = new List<BreakingPoint>();
+                
 
-                new_pg.BreakingPoints.Add(breakingPoints[0]);
-                new_pg.BreakingPoints.Add(breakingPoints[0]);
                 point_groups.Add(new_pg);
-                breakingPoints[0].pointGroupId = new_pg.Id;
-                breakingPoints[1].pointGroupId = new_pg.Id;
-
-                breakingPoints[0].PointGroup = new_pg;
-                breakingPoints[1].PointGroup = new_pg;
             }
         }
         private void CreateGroup(List<BreakingPoint> breakingPoints)
@@ -192,10 +162,10 @@ namespace TestCaseTool2
             {
                 PointGroup pointGroup = new PointGroup();
                 pointGroup.Id = point_groups.Max(pg => pg.Id) + 1;
+
                 foreach (BreakingPoint bp in breakingPoints)
                 {
-                    bp.PointGroup = pointGroup;
-                    bp.pointGroupId = pointGroup.Id;
+                    pointGroup.BreakingPoints[bp] = EIntervalPointType.DISCRETE_POINT;
                 }
                 point_groups.Add(pointGroup);
             }

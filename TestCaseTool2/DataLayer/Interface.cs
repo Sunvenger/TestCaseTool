@@ -7,7 +7,7 @@ using System.IO;
 using System.Runtime.Serialization;
 using System.Runtime.Serialization.Json;
 using System.Text;
-
+using Newtonsoft.Json;
 namespace TestCaseTool2.DataLayer
 {
     public enum EInterfaceType
@@ -23,7 +23,7 @@ namespace TestCaseTool2.DataLayer
         I,
     }
 
-    public enum EPointType
+    public enum EIntervalPointType
     {
         INCLUSIVE_INTERVAL,
         EXCLUSIVE_INTERVAL,
@@ -33,7 +33,7 @@ namespace TestCaseTool2.DataLayer
     public class PointGroup
     {
         public int Id { get; set; }
-        public List<BreakingPoint> BreakingPoints { get; set; }
+        public Dictionary<BreakingPoint, EIntervalPointType> BreakingPoints { get; set; }
     }
 
     public class Interface
@@ -50,33 +50,40 @@ namespace TestCaseTool2.DataLayer
 
         public static string Serialize(List<Interface> interfaces)
         {
-            MemoryStream stream = new MemoryStream();
-            DataContractJsonSerializer serializer = new DataContractJsonSerializer(typeof(List<Interface>));
-            serializer.WriteObject(stream, interfaces);
-            stream.Position = 0;
-            StreamReader reader = new StreamReader(stream);
-            return reader.ReadToEnd();
+            JsonSerializerSettings settings = new JsonSerializerSettings
+            {
+                ReferenceLoopHandling = ReferenceLoopHandling.Ignore
+            };
+            return JsonConvert.SerializeObject(interfaces, settings);
         }
 
         public static List<Interface> Deserialize(string json)
         {
-            MemoryStream stream = new MemoryStream(Encoding.UTF8.GetBytes(json));
-            DataContractJsonSerializer serializer = new DataContractJsonSerializer(typeof(List<Interface>));
-            return (List<Interface>)serializer.ReadObject(stream);
+            var interfaces = JsonConvert.DeserializeObject<List<Interface>>(json);
+
+            // Nastavenie referencii rodičovského objektu
+            foreach (var intf in interfaces)
+            {
+                foreach (var bp in intf.BreakingPoints)
+                {
+                    bp.ParentInterface = intf;
+
+                }
+            }
+
+            return interfaces;
         }
+
     }
 
     public class BreakingPoint
     {
         [DataMemberAttribute]
+        public int Id { get; set; }
         public string Name { get; set; }
         [DataMemberAttribute]
         public EValidity Validity { get; set; }
 
-        public PointGroup PointGroup { get; set; }
-
-        public int pointGroupId;
-        public EPointType PointType { get; set; }
         public Interface ParentInterface { get; set; }
 
         public BreakingPoint(string name, EValidity validity, Interface parentInterface)
@@ -91,18 +98,33 @@ namespace TestCaseTool2.DataLayer
     {
         public string Name { get; set; }
         public List<EquivalenceClassColumn> Columns { get; set; }
+        public List<EquivalenceClassColumn> UnsortedColumns { get; set; }
         public List<Interface> Interfaces { get; set; }
         public EquivalenceClass(List<Interface> interfaces, List<PointGroup> pointGroupList)
         {
             Interfaces = interfaces;
             Name = "Equivalence Class";
             Columns = new List<EquivalenceClassColumn>();
+            UnsortedColumns = new List<EquivalenceClassColumn>();
             foreach (Interface intf in interfaces)
             {
                 EquivalenceClassColumn column = new EquivalenceClassColumn(intf, pointGroupList);
-                Columns.Add(column);
+                UnsortedColumns.Add(column);
+            }
+
+            foreach (EquivalenceClassColumn col in UnsortedColumns)
+            {
+                if (col.Validity == EValidity.V)
+                    Columns.Add(col);
+            }
+
+            foreach (EquivalenceClassColumn col in UnsortedColumns)
+            {
+                if (col.Validity == EValidity.I)
+                    Columns.Add(col);
             }
         }
+
 
         public int GetMaxValidCount()
         {
@@ -139,6 +161,7 @@ namespace TestCaseTool2.DataLayer
         public Interface Interface { get; set; }
         public List<string> ValidValues { get; set; }
         public List<string> InvalidValues { get; set; }
+        public EValidity Validity { get; set; }
 
         public EquivalenceClassColumn(Interface intf, List<PointGroup> pointGroupList)
         {
@@ -172,62 +195,90 @@ namespace TestCaseTool2.DataLayer
             List<BreakingPoint> isObservedList = new List<BreakingPoint>(); // slúži na to aby body, ktoré niesú zahrnuté v skupine/intervale už neboli zobrazované ako samostatné stĺpce
             //Avšak treba zvážiť Či body patriace do intervalu EXCLUSIVE_INTERVAL
             if (pointGroupList == null) pointGroupList = new List<PointGroup>();//group list not initialized yet
-            foreach (PointGroup pg in pointGroupList)
+
+            //get point group list to work with
+            List<PointGroup> pointGroupsToWorkWith = new List<PointGroup>();
+            foreach (BreakingPoint bp in intf.BreakingPoints)
+            {
+                var groups = from p_gs in pointGroupList where p_gs.BreakingPoints.ContainsKey(bp)select p_gs;
+                foreach (PointGroup pg in groups)
+                {
+                    if (!pointGroupsToWorkWith.Contains(pg))
+                    {
+                        pointGroupsToWorkWith.Add(pg);
+                    }
+                }
+                
+
+            }
+            
+
+
+
+
+            foreach (PointGroup pg in pointGroupsToWorkWith)
             {
                 string Text = "";
-
                 int IntervalCursor = 0;
-                foreach (BreakingPoint bp in intf.BreakingPoints)
+
+                foreach (BreakingPoint bp in pg.BreakingPoints.Keys)
                 {
-                    if (bp.PointGroup == pg) // ak bp patrí do skupiny pg...
+                    if (pg.BreakingPoints[bp] == EIntervalPointType.INCLUSIVE_INTERVAL)
                     {
-                        if (bp.Validity == EValidity.V)
+                        if (IntervalCursor == 0)
                         {
-                            if (IntervalCursor == 0)
+                            Text = $"[{bp.Name}, ";
+                            isObservedList.Add(bp);
+                            IntervalCursor++;
+                        }
+                        else if (IntervalCursor == 1)
+                        {
+                            Text += $"{bp.Name}]";
+                            isObservedList.Add(bp);
+
+                            IntervalCursor = 0;
+
+                            if (bp.Validity == EValidity.V)
                             {
-                                if (bp.PointType == EPointType.INCLUSIVE_INTERVAL)
-                                    Text = $"[{bp.Name},";
-                                if (bp.PointType == EPointType.EXCLUSIVE_INTERVAL) 
-                                    Text = $"]{bp.Name},";
-                                isObservedList.Add(bp); 
-                                IntervalCursor++;
-                            }
-                            else if (IntervalCursor == 1)
-                            {
-                                if (bp.PointType == EPointType.INCLUSIVE_INTERVAL)
-                                    Text += $"{bp.Name}]";
-                                if (bp.PointType == EPointType.EXCLUSIVE_INTERVAL)
-                                    Text += $"{bp.Name}[";
+                                Validity = EValidity.V;
                                 ValidValues.Add(Text);
-                                isObservedList.Add(bp);
-                                IntervalCursor = 0;
                             }
-
-                        }
-
-                        if (bp.Validity == EValidity.I)
-                        {
-                            if (IntervalCursor == 0)
+                            if (bp.Validity == EValidity.I)
                             {
-                                if (bp.PointType == EPointType.INCLUSIVE_INTERVAL)
-                                    Text = $"[{bp.Name},";
-                                if (bp.PointType == EPointType.EXCLUSIVE_INTERVAL)
-                                    Text = $"]{bp.Name},";
-                                isObservedList.Add(bp);
-                                IntervalCursor++;
-                            }
-                            else if (IntervalCursor == 1)
-                            {
-                                if (bp.PointType == EPointType.INCLUSIVE_INTERVAL)
-                                    Text += $"{bp.Name}]";
-                                if (bp.PointType == EPointType.EXCLUSIVE_INTERVAL)
-                                    Text += $"{bp.Name}[";
+                                Validity = EValidity.I;
                                 InvalidValues.Add(Text);
-                                isObservedList.Add(bp);
-                                IntervalCursor = 0;
                             }
-                            
                         }
+
+                    }
+
+                    if (pg.BreakingPoints[bp] == EIntervalPointType.EXCLUSIVE_INTERVAL)
+                    {
+                        if (IntervalCursor == 0)
+                        {
+                            Text = $"]{bp.Name}, ";
+                            isObservedList.Add(bp);
+                            IntervalCursor++;
+                        }
+                        else if (IntervalCursor == 1)
+                        {
+                            Text += $"{bp.Name}[";
+                            isObservedList.Add(bp);
+                            IntervalCursor = 0;
+
+                            if (bp.Validity == EValidity.V)
+                            {
+                                Validity = EValidity.V;
+                                ValidValues.Add(Text);
+                            }
+                            if (bp.Validity == EValidity.I)
+                            {
+                                Validity = EValidity.I;
+                                InvalidValues.Add(Text);
+                            }
+
+                        }
+
                     }
                 }
 

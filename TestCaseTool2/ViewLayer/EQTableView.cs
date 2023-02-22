@@ -36,7 +36,7 @@ namespace TestCaseTool2.ViewLayer
 
             // Vytvoríme názvy stĺpcov
             List<string> columnNamesList = new List<string>();
-            columnNamesList.Add("Name");
+
             for (int i = 1; i <= maxValidCount; i++)
             {
                 columnNamesList.Add($"V{i}");
@@ -45,6 +45,7 @@ namespace TestCaseTool2.ViewLayer
             {
                 columnNamesList.Add($"I{i}");
             }
+            columnNamesList.Add("Name");
             columnNames = columnNamesList.ToArray();
 
             // Vytvoríme dáta pre tabuľku
@@ -52,16 +53,16 @@ namespace TestCaseTool2.ViewLayer
 
             for (int i = 0; i < columns.Count; i++)
             {
-                tableData[i, 0] = columns[i].Interface.Name;
+                tableData[i, maxInvalidCount+maxValidCount] = columns[i].Interface.Name;
 
                 for (int j = 0; j < columns[i].ValidValues.Count; j++)
                 {
-                    tableData[i, j + 1] = columns[i].ValidValues[j];
+                    tableData[i, j] = columns[i].ValidValues[j];
                 }
 
                 for (int j = 0; j < columns[i].InvalidValues.Count; j++)
                 {
-                    tableData[i, maxValidCount + j + 1] = columns[i].InvalidValues[j];
+                    tableData[i, maxValidCount + j] = columns[i].InvalidValues[j];
                 }
             }
         }
